@@ -25,7 +25,7 @@ jobs:
           python3 finalize.py
           test $(stat -c%s out/horaires.json) -gt 2000000
           test $(stat -c%s out/quais.json) -gt 100000
-            - name: Envoyer sur le site (FTP)
+      - name: Envoyer sur le site (FTP)
         env:
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_USER: ${{ secrets.FTP_USER }}
