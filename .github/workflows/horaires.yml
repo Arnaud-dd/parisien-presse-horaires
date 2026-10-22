@@ -25,7 +25,7 @@ jobs:
           python3 finalize.py
           test $(stat -c%s out/horaires.json) -gt 2000000
           test $(stat -c%s out/quais.json) -gt 100000
-      - name: Envoyer sur le site (FTP)
+            - name: Envoyer sur le site (FTP)
         env:
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_USER: ${{ secrets.FTP_USER }}
@@ -33,11 +33,14 @@ jobs:
           FTP_DIRS: ${{ secrets.FTP_DIRS }}
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq lftp >/dev/null
+          echo "== Où arrive-t-on en se connectant, et qu'y a-t-il ?"
+          lftp -u "$FTP_USER,$FTP_PASSWORD" "$FTP_HOST" -e "set ftp:ssl-allow yes; set ssl:verify-certificate no; pwd; cls -1; bye"
           for d in $FTP_DIRS; do
-            lftp -u "$FTP_USER,$FTP_PASSWORD" "$FTP_HOST" -e "set ftp:ssl-allow yes; set ssl:verify-certificate no; cd $d; \
+            echo "== Dossier visé : ${#d} caractères (attendu : 33), début ${d:0:6}…, fin …${d: -6}"
+            lftp -u "$FTP_USER,$FTP_PASSWORD" "$FTP_HOST" -e "set cmd:fail-exit yes; set ftp:ssl-allow yes; set ssl:verify-certificate no; cd $d; \
               put out/horaires.json -o horaires.json.new; put out/quais.json -o quais.json.new; \
-              rm -f horaires.json; mv horaires.json.new horaires.json; rm -f quais.json; mv quais.json.new quais.json; bye"
-            echo "envoyé dans $d"
+              rm -f horaires.json; mv horaires.json.new horaires.json; rm -f quais.json; mv quais.json.new quais.json; cls -l horaires.json; bye"
+            echo "== envoyé"
           done
       - name: Résumé
         run: python3 -c "import json;N=json.load(open('out/horaires.json'));print('Horaires à partir du',N['D0'],'·',len(N['P']),'parcours')" >> $GITHUB_STEP_SUMMARY
