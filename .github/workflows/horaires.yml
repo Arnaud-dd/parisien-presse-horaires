@@ -1,0 +1,43 @@
+# Mise à jour automatique des horaires de l'Itinéraire (Parisien Pressé)
+name: Horaires
+on:
+  schedule:
+    - cron: "40 1 * * *"      # tous les jours vers 3 h 40 à Paris
+  workflow_dispatch:          # bouton « Run workflow » pour lancer à la main
+jobs:
+  maj:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Télécharger les horaires IDFM
+        run: |
+          curl -fsSL --retry 3 -o gtfs.zip "https://eu.ftp.opendatasoft.com/stif/GTFS/IDFM-gtfs.zip"
+          mkdir gtfs && unzip -q gtfs.zip -d gtfs && rm gtfs.zip
+      - name: Préparer les fichiers de l'appli
+        env: { GTFS: gtfs, OUT: out }
+        run: |
+          mkdir -p out
+          python3 build_tt.py
+          python3 hops.py
+          python3 finalize.py
+          test $(stat -c%s out/horaires.json) -gt 2000000
+          test $(stat -c%s out/quais.json) -gt 100000
+      - name: Envoyer sur le site (FTP)
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIRS: ${{ secrets.FTP_DIRS }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp >/dev/null
+          for d in $FTP_DIRS; do
+            lftp -u "$FTP_USER,$FTP_PASSWORD" "$FTP_HOST" -e "set ftp:ssl-allow yes; set ssl:verify-certificate no; cd $d; \
+              put out/horaires.json -o horaires.json.new; put out/quais.json -o quais.json.new; \
+              rm -f horaires.json; mv horaires.json.new horaires.json; rm -f quais.json; mv quais.json.new quais.json; bye"
+            echo "envoyé dans $d"
+          done
+      - name: Résumé
+        run: python3 -c "import json;N=json.load(open('out/horaires.json'));print('Horaires à partir du',N['D0'],'·',len(N['P']),'parcours')" >> $GITHUB_STEP_SUMMARY
