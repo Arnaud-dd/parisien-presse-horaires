@@ -59,22 +59,44 @@ for tid,seq in list(ST.items()):
     ST[tid]=[(x[0],x[1],int(a[i]),int(a[i]),x[4],x[5]) for i,x in enumerate(seq)]
 print('horaires lus',file=sys.stderr)
 # --- arrêts regroupés : zone d'arrêt (parent), puis même nom à moins de 300 m ---
+# 31 oct. 2026 : un arrêt de BUS dont les quais sont éloignés (les deux sens à des endroits différents : sens unique, grande place)
+# est coupé en plusieurs arrêts (même nom), un par groupe de quais à moins de 50 m. Leurs « zones » sont alors les numéros de quai
+# (quais.json renvoie le quai lui-même), pour que le temps réel tombe sur le bon côté. Gares et stations : inchangé.
 used=defaultdict(set); railArea=set()
 for tid,seq in ST.items():
     rt=R[T[tid][0]]['t']
     for x in seq:
         p=par(x[1]); used[p].add(x[1])
         if rt!=3: railArea.add(p)
-pos={p:(statistics.mean(float(stops[s]['stop_lat']) for s in v),statistics.mean(float(stops[s]['stop_lon']) for s in v)) for p,v in used.items()}
-name=lambda p: stops[p]['stop_name']
-order=sorted(used,key=lambda p:(p not in railArea,-len(used[p])))
+qll=lambda q:(float(stops[q]['stop_lat']),float(stops[q]['stop_lon']))
+qd=lambda a,b: math.hypot((qll(a)[0]-qll(b)[0])*KY,(qll(a)[1]-qll(b)[1])*KX)
+def clusters(qs):
+    C=[]
+    for q in sorted(qs):
+        hit=[c for c in C if any(qd(q,x)<0.05 for x in c)]
+        for c in hit: C.remove(c)
+        C.append(sum(hit,[])+[q])
+    return C
+U={}; UZ={}
+for p,qs in used.items():
+    cl=[list(qs)] if p in railArea else clusters(qs)
+    if len(cl)==1: U[p]=set(qs); UZ[p]=[p]
+    else:
+        for k,c in enumerate(cl): u=p+'#'+str(k); U[u]=set(c); UZ[u]=list(c)
+QU={q:u for u,qs in U.items() for q in qs}
+unitOf=lambda sid: QU.get(sid) or par(sid)
+isRailU=lambda u: u.split('#')[0] in railArea
+pos={u:(statistics.mean(qll(s)[0] for s in v),statistics.mean(qll(s)[1] for s in v)) for u,v in U.items()}
+name=lambda u: stops[u.split('#')[0]]['stop_name']
+order=sorted(U,key=lambda u:(not isRailU(u),-len(U[u])))
 grid=defaultdict(list); grp={}; reps=[]
 for p in order:
     la,lo=pos[p]; gk=(int(la*200),int(lo*140)); hit=None
     for dx in (-1,0,1):
         for dy in (-1,0,1):
             for q in grid[(gk[0]+dx,gk[1]+dy)]:
-                if name(q)==name(p) and math.hypot((pos[q][0]-la)*KY,(pos[q][1]-lo)*KX)<0.3: hit=q; break
+                lim=0.3 if isRailU(q) else 0.05          # vers une gare : 300 m ; deux arrêts de bus : seulement s'ils sont au même endroit
+                if name(q)==name(p) and math.hypot((pos[q][0]-la)*KY,(pos[q][1]-lo)*KX)<lim: hit=q; break
             if hit: break
         if hit: break
     if hit: grp[p]=hit
@@ -84,16 +106,17 @@ members=defaultdict(list)
 for p,q in grp.items(): members[q].append(p)
 S=[]
 for p in reps:
-    allst=[s for m in members[p] for s in used[m]]
-    S.append([name(p),round(statistics.mean(float(stops[s]['stop_lat']) for s in allst),5),round(statistics.mean(float(stops[s]['stop_lon']) for s in allst),5),','.join(sorted(m.replace('IDFM:','') for m in members[p] if m.replace('IDFM:','').isdigit()))])
-print('arrêts regroupés',len(S),'dont ferrés',sum(1 for p in reps if p in railArea or any(m in railArea for m in members[p])),file=sys.stderr)
+    allst=[s for m in members[p] for s in U[m]]
+    zs=sorted({z.replace('IDFM:','') for m in members[p] for z in UZ[m] if z.replace('IDFM:','').isdigit()})
+    S.append([name(p),round(statistics.mean(qll(s)[0] for s in allst),5),round(statistics.mean(qll(s)[1] for s in allst),5),','.join(zs)])
+print('arrêts regroupés',len(S),'dont ferrés',sum(1 for p in reps if any(isRailU(m) for m in members[p])),'arrêts de bus coupés en deux ou plus',sum(1 for p in used if p not in U),file=sys.stderr)
 LI={r:i for i,r in enumerate(R)}
 L=[[R[r]['n'],R[r]['c'],R[r]['tc'],R[r]['t'],R[r]['id'].replace('IDFM:','')] for r in R]
 # --- parcours (motifs) et courses ---
 pat={}
 for tid,seq in ST.items():
     r,days,twa=T[tid]
-    st=[(SI[grp[par(sid)]],a,d,pu,do,stops[sid].get('wheelchair_boarding','0') or '0') for _,sid,a,d,pu,do in sorted(seq)]
+    st=[(SI[grp[unitOf(sid)]],a,d,pu,do,stops[sid].get('wheelchair_boarding','0') or '0') for _,sid,a,d,pu,do in sorted(seq)]
     s2=[]
     for x in st:
         if s2 and s2[-1][0]==x[0]: s2[-1]=(x[0],s2[-1][1],x[2],x[3],x[4],max(s2[-1][5],x[5]))
@@ -129,7 +152,7 @@ X={}
 for t in rd('transfers.txt'):
     a,b=t['from_stop_id'],t['to_stop_id']
     if a not in platRoute or b not in platRoute: continue
-    sa,sb=SI[grp[par(a)]],SI[grp[par(b)]]; m=int(t['min_transfer_time'] or 0)/60
+    sa,sb=SI[grp[unitOf(a)]],SI[grp[unitOf(b)]]; m=int(t['min_transfer_time'] or 0)/60
     for la in platRoute[a]:
         for lb in platRoute[b]:
             if sa==sb and la==lb: continue
@@ -152,7 +175,7 @@ for p in rd('pathways.txt'):
     if not t: continue
     ent,plat=(a,b) if stops[a]['location_type']=='2' else (b,a)
     if plat not in platRoute: continue
-    ent2st[ent]=SI[grp[par(plat)]]
+    ent2st[ent]=SI[grp[unitOf(plat)]]
     for li in platRoute[plat]: E[ent][li].append(int(t))
 Eout=[]
 for ent,d in E.items():
