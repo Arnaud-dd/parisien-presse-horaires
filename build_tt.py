@@ -113,9 +113,10 @@ print('arrêts regroupés',len(S),'dont ferrés',sum(1 for p in reps if any(isRa
 LI={r:i for i,r in enumerate(R)}
 L=[[R[r]['n'],R[r]['c'],R[r]['tc'],R[r]['t'],R[r]['id'].replace('IDFM:','')] for r in R]
 # --- parcours (motifs) et courses ---
-pat={}
+pat={}; QC=defaultdict(set)   # 4 nov. 2026 : arrêts (quais) de chaque ligne dans chaque gare regroupée → sa vraie position
 for tid,seq in ST.items():
     r,days,twa=T[tid]
+    for _,sid,*_ in seq: QC[(SI[grp[unitOf(sid)]],LI[r])].add(sid)
     st=[(SI[grp[unitOf(sid)]],a,d,pu,do,stops[sid].get('wheelchair_boarding','0') or '0') for _,sid,a,d,pu,do in sorted(seq)]
     s2=[]
     for x in st:
@@ -182,5 +183,11 @@ for ent,d in E.items():
     s=stops[ent]; fl=[]
     for li,v in d.items(): fl+=[li,round(min(v)/60,2)]
     Eout.append([ent2st[ent],round(float(s['stop_lat']),5),round(float(s['stop_lon']),5),fl])
-json.dump({'D0':DATES[0],'S':S,'L':L,'P':Pout,'X':Xout,'XA':XAout,'E':Eout},open(OUT+'tt.json','w'),ensure_ascii=False,separators=(',',':'))
+# position d'une ligne dans une gare : seulement si elle est à plus de 25 m du point de la gare (Montparnasse 6 / 12, arrêts de bus d'une gare…)
+LQ=[]
+for (si,li),sids in QC.items():
+    la=statistics.mean(qll(q)[0] for q in sids); lo=statistics.mean(qll(q)[1] for q in sids)
+    if math.hypot((la-S[si][1])*KY,(lo-S[si][2])*KX)>0.025: LQ.append([si,li,round(la,5),round(lo,5)])
+print('positions de lignes dans les gares',len(LQ),file=sys.stderr)
+json.dump({'D0':DATES[0],'S':S,'L':L,'P':Pout,'X':Xout,'XA':XAout,'E':Eout,'LQ':LQ},open(OUT+'tt.json','w'),ensure_ascii=False,separators=(',',':'))
 print('taille',os.path.getsize(OUT+'tt.json'),file=sys.stderr)
