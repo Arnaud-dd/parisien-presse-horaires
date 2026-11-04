@@ -192,17 +192,16 @@ for ent in [s for s in stops if stops[s].get('location_type')=='2' and s in PW]:
         d,u=heapq.heappop(h)
         if d>dist.get(u,1e18) or d>1500: continue                 # 25 min au plus dans une gare
         if u in platRoute and u!=ent:
-            ent2st.setdefault(ent,SI[grp[unitOf(u)]])
-            for li in platRoute[u]: E[ent][li].append(d)
+            for li in platRoute[u]: E[(ent,SI[grp[unitOf(u)]])][li].append(d)   # rangé avec la gare du quai atteint (Châtelet / Châtelet - Les Halles…)
         for v,w in PW[u]:
             nd=d+w
             if nd<dist.get(v,1e18): dist[v]=nd; heapq.heappush(h,(nd,v))
 print('entrées lues',len(E),file=sys.stderr)
 Eout=[]
-for ent,d in E.items():
+for (ent,si),d in E.items():
     s=stops[ent]; fl=[]
     for li,v in d.items(): fl+=[li,round(min(v)/60,2)]   # entrée la plus rapide vers un quai de la ligne
-    Eout.append([ent2st[ent],round(float(s['stop_lat']),5),round(float(s['stop_lon']),5),fl])
+    Eout.append([si,round(float(s['stop_lat']),5),round(float(s['stop_lon']),5),fl])
 # position d'une ligne dans une gare : seulement si elle est à plus de 25 m du point de la gare (Montparnasse 6 / 12, arrêts de bus d'une gare…)
 LQ=[]
 for (si,li),sids in QC.items():
