@@ -193,6 +193,19 @@ try:
     print('DIAG transfers : colonnes',list(TRR[0].keys()) if TRR else [],'lignes',len(TRR),file=sys.stderr)
     print('DIAG transfers par type (de→vers ; 0 quai, 1 gare, 2 entrée, 3 point) :',dict(collections.Counter(lt(r['from_stop_id'])+'→'+lt(r['to_stop_id']) for r in TRR)),file=sys.stderr)
     print('DIAG transfer_type :',dict(collections.Counter(r.get('transfer_type','') for r in TRR)),file=sys.stderr)
+    # points de transfers.txt desservis par aucune course (ni quai, ni arrêt de bus réel) : que sont-ils ?
+    srv=set(platRoute); nf=[r for r in TRR if r['from_stop_id'] not in srv]; nt=[r for r in TRR if r['to_stop_id'] not in srv]
+    print('DIAG transfers : départ non desservi',len(nf),'| arrivée non desservie',len(nt),'| les deux',sum(1 for r in TRR if r['from_stop_id'] not in srv and r['to_stop_id'] not in srv),file=sys.stderr)
+    odd=collections.Counter()
+    for r in nf+nt:
+        for k in ('from_stop_id','to_stop_id'):
+            if r[k] not in srv: odd[r[k]]+=1
+    print('DIAG points non desservis distincts',len(odd),file=sys.stderr)
+    for sid,n in odd.most_common(25):
+        s=stops.get(sid,{}); pa=stops.get(s.get('parent_station') or '',{})
+        print('DIAG N',sid,'|',s.get('stop_name'),'| type',s.get('location_type') or '0','| parent',pa.get('stop_name'),'|',s.get('stop_lat'),s.get('stop_lon'),'|',n,'correspondances',file=sys.stderr)
+    for r in [r for r in TRR if r['from_stop_id'] not in srv or r['to_stop_id'] not in srv][:15]:
+        print('DIAG NT',stops.get(r['from_stop_id'],{}).get('stop_name'),'('+('desservi' if r['from_stop_id'] in srv else 'non desservi')+')','→',stops.get(r['to_stop_id'],{}).get('stop_name'),'('+('desservi' if r['to_stop_id'] in srv else 'non desservi')+')',r.get('min_transfer_time'),'s',file=sys.stderr)
     for r in TRR:
         if (r['from_stop_id'] in ids or r['to_stop_id'] in ids) and (lt(r['from_stop_id'])!='0' or lt(r['to_stop_id'])!='0'):
             print('DIAG T',stops.get(r['from_stop_id'],{}).get('stop_name'),'['+lt(r['from_stop_id'])+']','→',stops.get(r['to_stop_id'],{}).get('stop_name'),'['+lt(r['to_stop_id'])+']',{k:v for k,v in r.items() if v and k not in ('from_stop_id','to_stop_id')},file=sys.stderr)
