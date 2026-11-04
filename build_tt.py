@@ -189,6 +189,13 @@ try:
         if r['from_stop_id'] in ids or r['to_stop_id'] in ids:
             f,tt=stops.get(r['from_stop_id'],{}),stops.get(r['to_stop_id'],{})
             print('DIAG',f.get('stop_name'),'['+f.get('location_type','')+']','→',tt.get('stop_name'),'['+tt.get('location_type','')+']',{k:v for k,v in r.items() if v and k not in ('from_stop_id','to_stop_id')},file=sys.stderr)
+    TRR=list(rd('transfers.txt')); lt=lambda s:stops.get(s,{}).get('location_type','?') or '0'
+    print('DIAG transfers : colonnes',list(TRR[0].keys()) if TRR else [],'lignes',len(TRR),file=sys.stderr)
+    print('DIAG transfers par type (de→vers ; 0 quai, 1 gare, 2 entrée, 3 point) :',dict(collections.Counter(lt(r['from_stop_id'])+'→'+lt(r['to_stop_id']) for r in TRR)),file=sys.stderr)
+    print('DIAG transfer_type :',dict(collections.Counter(r.get('transfer_type','') for r in TRR)),file=sys.stderr)
+    for r in TRR:
+        if (r['from_stop_id'] in ids or r['to_stop_id'] in ids) and (lt(r['from_stop_id'])!='0' or lt(r['to_stop_id'])!='0'):
+            print('DIAG T',stops.get(r['from_stop_id'],{}).get('stop_name'),'['+lt(r['from_stop_id'])+']','→',stops.get(r['to_stop_id'],{}).get('stop_name'),'['+lt(r['to_stop_id'])+']',{k:v for k,v in r.items() if v and k not in ('from_stop_id','to_stop_id')},file=sys.stderr)
 except Exception as ex: print('DIAG erreur',ex,file=sys.stderr)
 PW=defaultdict(list)
 for p in rd('pathways.txt'):
