@@ -170,18 +170,38 @@ for (a,la,b,lb),m in X.items():
 XAout=[[a,b,round(m,1)] for (a,b),m in XA.items()]
 print('correspondances ferré',len(Xout),'arrêts',len(XAout),file=sys.stderr)
 # --- entrées : position + temps entrée→quai par ligne (pathways) ---
-E=defaultdict(lambda: defaultdict(list)); ent2st={}
+# 4 nov. 2026 : les couloirs IDFM passent souvent par des points intermédiaires (mezzanine, escalier…) et pas toujours
+# en un seul tronçon entrée → quai. Avant, on ne lisait que les tronçons directs et un point intermédiaire pouvait être pris
+# pour une entrée (avec seulement le temps de son dernier bout de couloir : 1 à 15 s). Maintenant : vraie entrée (location_type 2)
+# → plus court chemin dans le graphe des couloirs (sens interdits respectés) → quai.
+import heapq
+PW=defaultdict(list)
 for p in rd('pathways.txt'):
-    a,b,t=p['from_stop_id'],p['to_stop_id'],p['traversal_time']
-    if not t: continue
-    ent,plat=(a,b) if stops[a]['location_type']=='2' else (b,a)
-    if plat not in platRoute: continue
-    ent2st[ent]=SI[grp[unitOf(plat)]]
-    for li in platRoute[plat]: E[ent][li].append(int(t))
+    a,b=p['from_stop_id'],p['to_stop_id']
+    if a not in stops or b not in stops: continue
+    t=p.get('traversal_time') or ''
+    if t: t=float(t)
+    elif p.get('length'): t=float(p['length'])/1.1          # pas de temps : longueur à 1,1 m/s
+    else: continue
+    PW[a].append((b,t))
+    if str(p.get('is_bidirectional','1')).strip()!='0': PW[b].append((a,t))
+E=defaultdict(lambda: defaultdict(list)); ent2st={}
+for ent in [s for s in stops if stops[s].get('location_type')=='2' and s in PW]:
+    dist={ent:0.0}; h=[(0.0,ent)]
+    while h:
+        d,u=heapq.heappop(h)
+        if d>dist.get(u,1e18) or d>1500: continue                 # 25 min au plus dans une gare
+        if u in platRoute and u!=ent:
+            ent2st.setdefault(ent,SI[grp[unitOf(u)]])
+            for li in platRoute[u]: E[ent][li].append(d)
+        for v,w in PW[u]:
+            nd=d+w
+            if nd<dist.get(v,1e18): dist[v]=nd; heapq.heappush(h,(nd,v))
+print('entrées lues',len(E),file=sys.stderr)
 Eout=[]
 for ent,d in E.items():
     s=stops[ent]; fl=[]
-    for li,v in d.items(): fl+=[li,round(min(v)/60,2)]
+    for li,v in d.items(): fl+=[li,round(min(v)/60,2)]   # entrée la plus rapide vers un quai de la ligne
     Eout.append([ent2st[ent],round(float(s['stop_lat']),5),round(float(s['stop_lon']),5),fl])
 # position d'une ligne dans une gare : seulement si elle est à plus de 25 m du point de la gare (Montparnasse 6 / 12, arrêts de bus d'une gare…)
 LQ=[]
