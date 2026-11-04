@@ -1,4 +1,6 @@
 # Mise à jour automatique des horaires de l'Itinéraire (Parisien Pressé)
+# Chaque nuit : télécharge les horaires officiels IDFM (GTFS), prépare horaires.json et quais.json
+# pour les 7 prochains jours (travaux et jours fériés compris), puis les envoie sur le site par FTP.
 name: Horaires
 on:
   schedule:
@@ -16,6 +18,27 @@ jobs:
         run: |
           curl -fsSL --retry 3 -o gtfs.zip "https://eu.ftp.opendatasoft.com/stif/GTFS/IDFM-gtfs.zip"
           mkdir gtfs && unzip -q gtfs.zip -d gtfs && rm gtfs.zip
+      - name: Garder les fichiers bruts des couloirs et correspondances (pour vérifier)
+        run: |
+          mkdir -p brut
+          cp gtfs/pathways.txt gtfs/transfers.txt brut/
+          # stops.txt réduit aux points cités dans pathways / transfers (le fichier entier est trop gros)
+          python3 - <<'PY'
+          import csv
+          ids=set()
+          for f in ('pathways.txt','transfers.txt'):
+              for r in csv.DictReader(open('gtfs/'+f,encoding='utf-8-sig')): ids.add(r['from_stop_id']); ids.add(r['to_stop_id'])
+          R=list(csv.DictReader(open('gtfs/stops.txt',encoding='utf-8-sig')))
+          par={r.get('parent_station') for r in R if r['stop_id'] in ids}
+          keep=[r for r in R if r['stop_id'] in ids or r['stop_id'] in par]
+          w=csv.DictWriter(open('brut/stops-cites.txt','w',newline='',encoding='utf-8'),fieldnames=list(R[0].keys())); w.writeheader(); w.writerows(keep)
+          print('points gardés',len(keep))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couloirs-et-correspondances
+          path: brut/
+          retention-days: 7
       - name: Préparer les fichiers de l'appli
         env: { GTFS: gtfs, OUT: out }
         run: |
@@ -23,6 +46,7 @@ jobs:
           python3 build_tt.py
           python3 hops.py
           python3 finalize.py
+          # garde-fou : on n'envoie rien si le résultat paraît anormal
           test $(stat -c%s out/horaires.json) -gt 2000000
           test $(stat -c%s out/quais.json) -gt 100000
       - name: Envoyer sur le site (FTP)
@@ -32,15 +56,13 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_DIRS: ${{ secrets.FTP_DIRS }}
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq lftp >/dev/null
-          echo "== Où arrive-t-on en se connectant, et qu'y a-t-il ?"
-          lftp -u "$FTP_USER,$FTP_PASSWORD" "$FTP_HOST" -e "set ftp:ssl-allow yes; set ssl:verify-certificate no; pwd; cls -1; bye"
+          sudo apt-get install -y -qq lftp >/dev/null
+          # FTP_DIRS : un ou plusieurs dossiers séparés par des espaces, ex. « www/test/itineraire www/itineraire »
           for d in $FTP_DIRS; do
-            echo "== Dossier visé : ${#d} caractères (attendu : 33), début ${d:0:6}…, fin …${d: -6}"
-            lftp -u "$FTP_USER,$FTP_PASSWORD" "$FTP_HOST" -e "set cmd:fail-exit yes; set ftp:ssl-allow yes; set ssl:verify-certificate no; cd $d; \
+            lftp -u "$FTP_USER,$FTP_PASSWORD" "$FTP_HOST" -e "set ftp:ssl-allow yes; set ssl:verify-certificate no; cd $d; \
               put out/horaires.json -o horaires.json.new; put out/quais.json -o quais.json.new; \
-              rm -f horaires.json; mv horaires.json.new horaires.json; rm -f quais.json; mv quais.json.new quais.json; cls -l horaires.json; bye"
-            echo "== envoyé"
+              rm -f horaires.json; mv horaires.json.new horaires.json; rm -f quais.json; mv quais.json.new quais.json; bye"
+            echo "envoyé dans $d"
           done
       - name: Résumé
         run: python3 -c "import json;N=json.load(open('out/horaires.json'));print('Horaires à partir du',N['D0'],'·',len(N['P']),'parcours')" >> $GITHUB_STEP_SUMMARY
