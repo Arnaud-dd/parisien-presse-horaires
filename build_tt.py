@@ -174,7 +174,22 @@ print('correspondances ferré',len(Xout),'arrêts',len(XAout),file=sys.stderr)
 # en un seul tronçon entrée → quai. Avant, on ne lisait que les tronçons directs et un point intermédiaire pouvait être pris
 # pour une entrée (avec seulement le temps de son dernier bout de couloir : 1 à 15 s). Maintenant : vraie entrée (location_type 2)
 # → plus court chemin dans le graphe des couloirs (sens interdits respectés) → quai.
-import heapq
+import heapq, collections
+# --- relevé pour vérifier les couloirs (journal de l'Action) : ce que contient vraiment pathways.txt ---
+try:
+    PWR=list(rd('pathways.txt')); print('DIAG pathways : colonnes',list(PWR[0].keys()) if PWR else [],'lignes',len(PWR),file=sys.stderr)
+    for c in ('traversal_time','length','stair_count','max_slope','min_width','pathway_mode','is_bidirectional','signposted_as'):
+        if PWR and c in PWR[0]: print('DIAG  ',c,'rempli',sum(1 for r in PWR if (r.get(c) or '').strip()),'/',len(PWR),file=sys.stderr)
+    print('DIAG pathway_mode :',dict(collections.Counter(r.get('pathway_mode','') for r in PWR)),file=sys.stderr)
+    print('DIAG location_type :',dict(collections.Counter(s.get('location_type','') for s in stops.values())),file=sys.stderr)
+    print('DIAG levels.txt :',(sum(1 for _ in rd('levels.txt')) if os.path.exists(G+'levels.txt') else 'absent'),file=sys.stderr)
+    WANT={'Abbesses','Vavin','Jourdain','Maison Blanche','Châtelet - Les Halles'}
+    ids={s for s,v in stops.items() if v['stop_name'] in WANT or stops.get(v.get('parent_station') or '',{}).get('stop_name') in WANT}
+    for r in PWR:
+        if r['from_stop_id'] in ids or r['to_stop_id'] in ids:
+            f,tt=stops.get(r['from_stop_id'],{}),stops.get(r['to_stop_id'],{})
+            print('DIAG',f.get('stop_name'),'['+f.get('location_type','')+']','→',tt.get('stop_name'),'['+tt.get('location_type','')+']',{k:v for k,v in r.items() if v and k not in ('from_stop_id','to_stop_id')},file=sys.stderr)
+except Exception as ex: print('DIAG erreur',ex,file=sys.stderr)
 PW=defaultdict(list)
 for p in rd('pathways.txt'):
     a,b=p['from_stop_id'],p['to_stop_id']
