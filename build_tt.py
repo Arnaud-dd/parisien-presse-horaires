@@ -164,11 +164,12 @@ isbus=lambda li: L[li][3]==3
 Xout=[]; XA={}
 for (a,la,b,lb),m in X.items():
     if not isbus(la) and not isbus(lb): Xout.append([a,la,b,lb,round(m,1)])
+    elif a==b and isbus(la)!=isbus(lb): Xout.append([a,la,b,lb,round(m,1)])   # 4 nov. 2026 : métro/RER/tram ↔ bus dans la même gare : temps officiel IDFM, par ligne
     elif a!=b:
         k=(a,b)
         if k not in XA or m<XA[k]: XA[k]=m
 XAout=[[a,b,round(m,1)] for (a,b),m in XA.items()]
-print('correspondances ferré',len(Xout),'arrêts',len(XAout),file=sys.stderr)
+print('correspondances ferré (+ ferré↔bus même gare)',len(Xout),'arrêts',len(XAout),file=sys.stderr)
 # --- entrées : position + temps entrée→quai par ligne (pathways) ---
 # 4 nov. 2026 : les couloirs IDFM passent souvent par des points intermédiaires (mezzanine, escalier…) et pas toujours
 # en un seul tronçon entrée → quai. Avant, on ne lisait que les tronçons directs et un point intermédiaire pouvait être pris
